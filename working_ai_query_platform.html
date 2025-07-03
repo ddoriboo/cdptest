@@ -511,9 +511,12 @@
                 </div>
                 
                 <!-- 디버깅 정보 확인 버튼 -->
-                <div style="text-align: center; margin-top: 15px;">
+                <div style="text-align: center; margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
                     <button onclick="checkServerStatus()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-size: 12px;">
                         🔧 서버 상태 확인
+                    </button>
+                    <button onclick="testOpenAIAPI()" style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-size: 12px;">
+                        🧪 OpenAI API 테스트
                     </button>
                 </div>
             </div>
@@ -1327,6 +1330,9 @@ ORDER BY sc_int_highincome DESC;`,
                     icon = '⚠️';
                     title = 'AI 분석 실패 - 대체 분석 사용';
                     description = `OpenAI API 오류로 인해 키워드 기반 분석으로 전환했습니다 (${processingTimeMs}ms)`;
+                    if (metadata._apiError) {
+                        description += `<br><strong>오류 상세:</strong> ${metadata._apiError}`;
+                    }
                     break;
                 case 'fallback_no_key':
                     bannerClass = 'debug-info';
@@ -1566,6 +1572,46 @@ ORDER BY sc_int_highincome DESC;`,
                 console.error('서버 상태 확인 오류:', error);
                 showDebugInfo(`서버 상태 확인 실패: ${error.message}`, 'error');
                 alert(`❌ 서버 상태 확인 실패\n\n${error.message}`);
+            }
+        }
+        
+        // OpenAI API 키 테스트
+        async function testOpenAIAPI() {
+            try {
+                showDebugInfo('OpenAI API 키 테스트 중...', 'debug');
+                
+                const response = await fetch('/api/test-openai');
+                const data = await response.json();
+                
+                if (data.success) {
+                    let successMessage = `✅ OpenAI API 키 테스트 성공!\n\n`;
+                    successMessage += `🎉 메시지: ${data.message}\n`;
+                    successMessage += `📊 사용 가능한 모델 수: ${data.modelsCount}개\n`;
+                    successMessage += `🔤 API 키: ${data.apiKeyPrefix}\n\n`;
+                    successMessage += `이제 AI 분석이 정상적으로 작동할 것입니다!`;
+                    
+                    alert(successMessage);
+                    showDebugInfo('OpenAI API 키 테스트 성공', 'success');
+                } else {
+                    let errorMessage = `❌ OpenAI API 키 테스트 실패\n\n`;
+                    errorMessage += `🚨 오류: ${data.error}\n\n`;
+                    
+                    if (data.status) {
+                        errorMessage += `📊 HTTP 상태: ${data.status}\n`;
+                    }
+                    
+                    if (data.suggestion) {
+                        errorMessage += `💡 해결 방법:\n${data.suggestion}`;
+                    }
+                    
+                    alert(errorMessage);
+                    showDebugInfo(`OpenAI API 키 테스트 실패: ${data.error}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('OpenAI API 테스트 오류:', error);
+                showDebugInfo(`API 테스트 실패: ${error.message}`, 'error');
+                alert(`❌ API 테스트 중 오류 발생\n\n${error.message}`);
             }
         }
         

@@ -450,6 +450,77 @@ app.get('/api/debug', (req, res) => {
   });
 });
 
+// OpenAI API 키 테스트 엔드포인트
+app.get('/api/test-openai', async (req, res) => {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      return res.json({
+        success: false,
+        error: 'OPENAI_API_KEY 환경변수가 설정되지 않았습니다.',
+        suggestion: 'Railway Variables에서 OPENAI_API_KEY를 설정해주세요.'
+      });
+    }
+
+    console.log('🧪 OpenAI API 키 테스트 시작...');
+    
+    // 간단한 API 테스트 호출
+    const response = await fetch('https://api.openai.com/v1/models', {
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+      }
+    });
+
+    const responseText = await response.text();
+    
+    if (!response.ok) {
+      console.error('❌ OpenAI API 테스트 실패:', response.status, responseText);
+      
+      let errorDetail = '';
+      let suggestion = '';
+      
+      try {
+        const errorData = JSON.parse(responseText);
+        errorDetail = errorData.error?.message || responseText;
+      } catch (e) {
+        errorDetail = responseText;
+      }
+      
+      if (response.status === 401) {
+        suggestion = '1. API 키가 올바른지 확인하세요\n2. OpenAI 대시보드에서 API 키 유효성 확인\n3. API 키 앞뒤 공백 제거';
+      } else if (response.status === 429) {
+        suggestion = '1. API 사용량 한도 초과\n2. 결제 정보 확인\n3. 잠시 후 다시 시도';
+      } else if (response.status === 403) {
+        suggestion = '1. API 키 권한 확인\n2. 계정 상태 확인';
+      }
+      
+      return res.json({
+        success: false,
+        status: response.status,
+        error: errorDetail,
+        suggestion: suggestion
+      });
+    }
+
+    console.log('✅ OpenAI API 키 테스트 성공');
+    const data = JSON.parse(responseText);
+    
+    return res.json({
+      success: true,
+      message: 'OpenAI API 키가 정상적으로 작동합니다.',
+      modelsCount: data.data?.length || 0,
+      apiKeyPrefix: process.env.OPENAI_API_KEY.substring(0, 10) + '...'
+    });
+
+  } catch (error) {
+    console.error('💥 OpenAI API 테스트 중 오류:', error);
+    return res.json({
+      success: false,
+      error: error.message,
+      suggestion: '네트워크 연결을 확인하고 다시 시도해주세요.'
+    });
+  }
+});
+
 // API endpoint for OpenAI calls (보안을 위해 서버에서 처리)
 app.post('/api/analyze', async (req, res) => {
   const startTime = Date.now();
@@ -481,8 +552,14 @@ app.post('/api/analyze', async (req, res) => {
       } catch (apiError) {
         console.error('❌ OpenAI API 오류:', apiError.message);
         console.error('   상세 에러:', apiError);
+        console.error('   API 키 상태:', {
+          hasKey: !!process.env.OPENAI_API_KEY,
+          keyLength: process.env.OPENAI_API_KEY?.length,
+          keyPrefix: process.env.OPENAI_API_KEY?.substring(0, 10) + '...'
+        });
         console.log('🔄 Fallback으로 전환');
         result = generateSmartFallbackResult(query);
+        result._apiError = apiError.message; // 클라이언트에 오류 정보 전달
         analysisMethod = 'fallback_after_error';
       }
     } else {
