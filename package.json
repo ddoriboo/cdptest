@@ -1,0 +1,15 @@
+{
+  "name": "cdp-ai-query-platform",
+  "version": "1.0.0",
+  "description": "CDP AI Natural Language Query Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
