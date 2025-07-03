@@ -4,67 +4,450 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 스마트 질문 분석 함수
+// 홀리스틱 질문 분석 함수 (폭넓은 분석)
 function generateSmartFallbackResult(query) {
   const lowerQuery = query.toLowerCase();
   
-  // 키워드 기반 타겟 타입 결정
-  let targetType = '일반';
+  // 다중 키워드 매칭으로 복합적인 니즈 파악
+  const categoryScores = {};
   
   const keywords = {
-    '대출': ['대출', '빌려', '신용', '금융', '돈', '차용', '융자', '여신'],
-    '뷰티': ['뷰티', '화장품', '미용', '코스메틱', '스킨케어', '메이크업', '향수'],
-    '여행': ['여행', '해외', '항공', '호텔', '휴가', '관광', '출국', '비행'],
-    '골프': ['골프', '라운딩', '클럽', '필드', '골프장', '스크린골프'],
-    '운동': ['운동', '헬스', '피트니스', '요가', '필라테스', '수영', '러닝'],
-    '쇼핑': ['쇼핑', '구매', '온라인몰', '배송', '배달', '주문'],
-    '결혼': ['결혼', '웨딩', '신혼', '허니문', '예식', '결혼식'],
-    '자녀': ['자녀', '아이', '아기', '어린이', '육아', '출산', '임신'],
-    '자동차': ['자동차', '차량', '카', '자동차보험', '주차', '주유'],
-    '투자': ['투자', '주식', '펀드', '자산', '재테크', '금융상품']
+    '대출': ['대출', '빌려', '신용', '금융', '돈', '차용', '융자', '여신', '현금', '자금'],
+    '뷰티': ['뷰티', '화장품', '미용', '코스메틱', '스킨케어', '메이크업', '향수', '네일', '에스테틱'],
+    '여행': ['여행', '해외', '항공', '호텔', '휴가', '관광', '출국', '비행', '패키지', '리조트'],
+    '골프': ['골프', '라운딩', '클럽', '필드', '골프장', '스크린골프', '캐디', '그린피'],
+    '운동': ['운동', '헬스', '피트니스', '요가', '필라테스', '수영', '러닝', '마라톤', '트레이닝'],
+    '쇼핑': ['쇼핑', '구매', '온라인몰', '배송', '배달', '주문', '이커머스', '할인'],
+    '결혼': ['결혼', '웨딩', '신혼', '허니문', '예식', '결혼식', '신부', '드레스'],
+    '자녀': ['자녀', '아이', '아기', '어린이', '육아', '출산', '임신', '유치원', '학원'],
+    '자동차': ['자동차', '차량', '카', '자동차보험', '주차', '주유', '렌트', '리스'],
+    '투자': ['투자', '주식', '펀드', '자산', '재테크', '금융상품', '적금', '예금'],
+    '부동산': ['집', '아파트', '주택', '전세', '월세', '매매', '부동산', '이사'],
+    '고소득': ['고소득', '부자', '프리미엄', '럭셔리', '명품', '고급'],
+    '라이프스타일': ['취미', '여가', '문화', '예술', '음악', '영화', '독서']
   };
   
-  for (const [type, keywordList] of Object.entries(keywords)) {
-    if (keywordList.some(keyword => lowerQuery.includes(keyword))) {
-      targetType = type;
-      break;
-    }
+  // 각 카테고리별 점수 계산
+  for (const [category, keywordList] of Object.entries(keywords)) {
+    const matches = keywordList.filter(keyword => lowerQuery.includes(keyword));
+    categoryScores[category] = matches.length;
   }
   
-  // 연령/성별 키워드 확인
-  const ageKeywords = {
-    '20대': ['20대', '젊은', '청년', '신입'],
-    '30대': ['30대', '직장인', '워킹맘'],
-    '40대': ['40대', '중년', '관리직'],
-    '50대': ['50대', '시니어', '중장년']
-  };
+  // 상위 카테고리들 추출 (복합적 니즈)
+  const sortedCategories = Object.entries(categoryScores)
+    .filter(([category, score]) => score > 0)
+    .sort(([,a], [,b]) => b - a)
+    .map(([category]) => category);
   
-  const genderKeywords = {
-    '여성': ['여성', '여자', '엄마', '주부'],
-    '남성': ['남성', '남자', '아빠', '직장인']
-  };
+  // 연령/성별/소득/라이프스테이지 분석
+  const demographics = analyzeDemographics(lowerQuery);
   
-  let targetAge = null;
-  let targetGender = null;
-  
-  for (const [age, keywords] of Object.entries(ageKeywords)) {
-    if (keywords.some(keyword => lowerQuery.includes(keyword))) {
-      targetAge = age;
-      break;
-    }
-  }
-  
-  for (const [gender, keywords] of Object.entries(genderKeywords)) {
-    if (keywords.some(keyword => lowerQuery.includes(keyword))) {
-      targetGender = gender;
-      break;
-    }
-  }
-  
-  return generateTargetRecommendation(targetType, query, targetAge, targetGender);
+  return generateComprehensiveRecommendation(query, sortedCategories, demographics);
 }
 
-// 타겟별 추천 생성 함수
+// 인구통계학적 특성 분석
+function analyzeDemographics(query) {
+  const demographics = {};
+  
+  // 연령대 분석
+  const agePatterns = {
+    '20대': ['20대', '젊은', '청년', '신입', '대학생', '사회초년생'],
+    '30대': ['30대', '직장인', '워킹맘', '신혼', '커리어'],
+    '40대': ['40대', '중년', '관리직', '팀장', '임원'],
+    '50대': ['50대', '시니어', '중장년', '은퇴준비']
+  };
+  
+  for (const [age, patterns] of Object.entries(agePatterns)) {
+    if (patterns.some(pattern => query.includes(pattern))) {
+      demographics.age = age;
+      break;
+    }
+  }
+  
+  // 성별 분석
+  const genderPatterns = {
+    '여성': ['여성', '여자', '엄마', '주부', '워킹맘', '언니', '누나'],
+    '남성': ['남성', '남자', '아빠', '직장인', '형', '오빠']
+  };
+  
+  for (const [gender, patterns] of Object.entries(genderPatterns)) {
+    if (patterns.some(pattern => query.includes(pattern))) {
+      demographics.gender = gender;
+      break;
+    }
+  }
+  
+  // 소득 수준 분석
+  const incomePatterns = {
+    '고소득': ['고소득', '부자', '프리미엄', '럭셔리', '고급', '명품', '비싼'],
+    '중산층': ['중산층', '일반', '평균', '보통'],
+    '실용적': ['절약', '할인', '저렴', '가성비', '알뜰']
+  };
+  
+  for (const [income, patterns] of Object.entries(incomePatterns)) {
+    if (patterns.some(pattern => query.includes(pattern))) {
+      demographics.income = income;
+      break;
+    }
+  }
+  
+  // 라이프스테이지 분석
+  const lifestagePatterns = {
+    '신혼': ['신혼', '결혼', '웨딩'],
+    '육아': ['육아', '아이', '자녀', '아기', '출산'],
+    '싱글': ['혼자', '1인', '독신', '싱글'],
+    '은퇴준비': ['은퇴', '노후', '시니어']
+  };
+  
+  for (const [stage, patterns] of Object.entries(lifestagePatterns)) {
+    if (patterns.some(pattern => query.includes(pattern))) {
+      demographics.lifestage = stage;
+      break;
+    }
+  }
+  
+  return demographics;
+}
+
+// 종합적인 추천 생성 함수 (홀리스틱 분석)
+function generateComprehensiveRecommendation(originalQuery, categories, demographics) {
+  // 전체 CDP 컬럼 풀
+  const allColumns = {
+    // 직접 행동 지표 (fa_int_*)
+    direct_behavior: {
+      'fa_int_loan1stfinancial': { desc: '1금융권 신용대출 실행', type: 'date', condition: 'IS NOT NULL', priority: 'high' },
+      'fa_int_loanpersonal': { desc: '신용대출 실행', type: 'date', condition: 'IS NOT NULL', priority: 'high' },
+      'fa_int_traveloverseas': { desc: '해외여행 예정', type: 'date', condition: 'IS NOT NULL', priority: 'high' },
+      'fa_int_golf': { desc: '골프용품/골프장 결제', type: 'date', condition: 'IS NOT NULL', priority: 'high' },
+      'fa_int_luxury': { desc: '100만원 이상 명품 결제', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_int_delivery': { desc: '배달음식 결제', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_int_wedding': { desc: '결혼 준비 관련 결제', type: 'date', condition: 'IS NOT NULL', priority: 'high' },
+      'fa_int_householdsingle': { desc: '1인 가구 관련 상품 결제', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_int_householdchild': { desc: '어린이 관련 상품 결제', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_int_move': { desc: '이사 관련 상품 결제', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_int_carpurchase': { desc: '차량 구매 추정', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_int_saving': { desc: '예적금 개설', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_int_gym': { desc: '피트니스/헬스장 결제', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_int_pilatesyoga': { desc: '필라테스/요가 결제', type: 'date', condition: 'IS NOT NULL', priority: 'low' }
+    },
+    
+    // 업종별 지표 (fa_ind_*)
+    industry_behavior: {
+      'fa_ind_beauty': { desc: '미용 서비스 결제', type: 'date', condition: 'IS NOT NULL', priority: 'high' },
+      'fa_ind_cosmetic': { desc: '뷰티 제품 결제', type: 'date', condition: 'IS NOT NULL', priority: 'high' },
+      'fa_ind_travel': { desc: '여행 서비스 결제', type: 'date', condition: 'IS NOT NULL', priority: 'high' },
+      'fa_ind_finance': { desc: '금융 서비스 결제', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_ind_education': { desc: '교육 서비스 결제', type: 'date', condition: 'IS NOT NULL', priority: 'medium' },
+      'fa_ind_restaurant': { desc: '음식점 결제', type: 'date', condition: 'IS NOT NULL', priority: 'low' },
+      'fa_ind_cafe': { desc: '카페 결제', type: 'date', condition: 'IS NOT NULL', priority: 'low' }
+    },
+    
+    // 예측 스코어 (sc_*)
+    prediction_scores: {
+      'sc_int_loan1stfinancial': { desc: '1금융권 대출 예측스코어', type: 'double', condition: '> 0.7', priority: 'high' },
+      'sc_ind_cosmetic': { desc: '뷰티 제품 예측스코어', type: 'double', condition: '> 0.8', priority: 'high' },
+      'sc_int_golf': { desc: '골프 관련 예측스코어', type: 'double', condition: '> 0.7', priority: 'high' },
+      'sc_int_highincome': { desc: '고소득 예측스코어', type: 'double', condition: '> 0.8', priority: 'high' },
+      'sc_int_luxury': { desc: '명품 구매 예측스코어', type: 'double', condition: '> 0.7', priority: 'medium' },
+      'sc_int_delivery': { desc: '배달 이용 예측스코어', type: 'double', condition: '> 0.6', priority: 'low' },
+      'sc_int_wedding': { desc: '결혼 준비 예측스코어', type: 'double', condition: '> 0.7', priority: 'medium' },
+      'sc_ind_beauty': { desc: '미용 서비스 예측스코어', type: 'double', condition: '> 0.7', priority: 'medium' }
+    },
+    
+    // 인구통계학적 플래그 (fi_npay_*)
+    demographic_flags: {
+      'fi_npay_age20': { desc: '20대', type: 'boolean', condition: '= true', priority: 'medium' },
+      'fi_npay_age30': { desc: '30대', type: 'boolean', condition: '= true', priority: 'medium' },
+      'fi_npay_age40': { desc: '40대', type: 'boolean', condition: '= true', priority: 'medium' },
+      'fi_npay_genderf': { desc: '여성', type: 'boolean', condition: '= true', priority: 'medium' },
+      'fi_npay_genderm': { desc: '남성', type: 'boolean', condition: '= true', priority: 'medium' },
+      'fi_npay_creditcheck': { desc: '신용조회 서비스 가입', type: 'boolean', condition: '= true', priority: 'medium' },
+      'fi_npay_membershipnormal': { desc: '플러스멤버십 가입', type: 'boolean', condition: '= true', priority: 'low' },
+      'fi_npay_myassetreg': { desc: '내자산 서비스 연동', type: 'boolean', condition: '= true', priority: 'medium' }
+    }
+  };
+
+  // 카테고리-컬럼 매핑 (확장된 버전)
+  const categoryColumnMapping = {
+    '대출': {
+      primary: ['fa_int_loan1stfinancial', 'fa_int_loanpersonal', 'sc_int_loan1stfinancial'],
+      secondary: ['fi_npay_creditcheck', 'sc_int_highincome', 'fa_ind_finance'],
+      tertiary: ['fa_int_saving', 'fa_int_move', 'fa_int_carpurchase'] // 대출 니즈 발생 이벤트들
+    },
+    '뷰티': {
+      primary: ['fa_ind_cosmetic', 'fa_ind_beauty', 'sc_ind_cosmetic'],
+      secondary: ['fi_npay_genderf', 'sc_ind_beauty'],
+      tertiary: ['fa_int_luxury', 'fa_int_delivery'] // 뷰티 관심층의 라이프스타일
+    },
+    '여행': {
+      primary: ['fa_int_traveloverseas', 'fa_ind_travel'],
+      secondary: ['sc_int_highincome', 'fa_int_luxury'],
+      tertiary: ['fi_npay_creditcheck', 'fa_int_saving'] // 여행 자금 관련
+    },
+    '골프': {
+      primary: ['fa_int_golf', 'sc_int_golf'],
+      secondary: ['sc_int_highincome', 'fa_int_luxury'],
+      tertiary: ['fi_npay_genderm', 'fa_ind_finance'] // 골프 인구 특성
+    },
+    '투자': {
+      primary: ['fa_int_saving', 'fa_ind_finance'],
+      secondary: ['sc_int_highincome', 'fi_npay_creditcheck'],
+      tertiary: ['fi_npay_myassetreg', 'fa_int_loan1stfinancial'] // 투자 성향 고객 특성
+    },
+    '부동산': {
+      primary: ['fa_int_move', 'fa_int_loan1stfinancial'],
+      secondary: ['sc_int_highincome', 'fa_int_saving'],
+      tertiary: ['fa_int_wedding', 'fa_int_householdchild'] // 주거 니즈 발생 이벤트
+    }
+  };
+
+  // 복합적 추천 로직
+  let recommendedColumns = [];
+  
+  // 1. Primary 컬럼들 (직접 관련)
+  categories.slice(0, 2).forEach(category => { // 상위 2개 카테고리
+    if (categoryColumnMapping[category]) {
+      categoryColumnMapping[category].primary.forEach(colName => {
+        if (!recommendedColumns.find(c => c.column === colName)) {
+          const colInfo = findColumnInfo(colName, allColumns);
+          if (colInfo) {
+            recommendedColumns.push({
+              column: colName,
+              description: colInfo.desc,
+              condition: colInfo.condition,
+              priority: 'high',
+              reasoning: `${category} 관련 핵심 지표로 타겟 고객 식별에 가장 중요한 컬럼입니다.`
+            });
+          }
+        }
+      });
+    }
+  });
+
+  // 2. Secondary 컬럼들 (간접 관련)
+  categories.slice(0, 3).forEach(category => {
+    if (categoryColumnMapping[category]) {
+      categoryColumnMapping[category].secondary.forEach(colName => {
+        if (!recommendedColumns.find(c => c.column === colName)) {
+          const colInfo = findColumnInfo(colName, allColumns);
+          if (colInfo) {
+            recommendedColumns.push({
+              column: colName,
+              description: colInfo.desc,
+              condition: colInfo.condition,
+              priority: 'medium',
+              reasoning: `${category} 관심도가 높은 고객의 전형적인 특성으로 세분화에 유용합니다.`
+            });
+          }
+        }
+      });
+    }
+  });
+
+  // 3. 인구통계학적 컬럼들
+  if (demographics.age) {
+    const ageCol = `fi_npay_age${demographics.age.replace('대', '')}`;
+    if (!recommendedColumns.find(c => c.column === ageCol)) {
+      recommendedColumns.push({
+        column: ageCol,
+        description: `${demographics.age} 연령층`,
+        condition: '= true',
+        priority: 'medium',
+        reasoning: `${demographics.age} 고객의 라이프스타일과 소비 패턴에 맞춘 타겟팅이 가능합니다.`
+      });
+    }
+  }
+
+  if (demographics.gender) {
+    const genderCol = demographics.gender === '여성' ? 'fi_npay_genderf' : 'fi_npay_genderm';
+    if (!recommendedColumns.find(c => c.column === genderCol)) {
+      recommendedColumns.push({
+        column: genderCol,
+        description: `${demographics.gender} 고객`,
+        condition: '= true',
+        priority: 'medium',
+        reasoning: `${demographics.gender} 고객의 선호도와 구매 행동 특성을 반영한 세분화 기준입니다.`
+      });
+    }
+  }
+
+  // 4. Tertiary 컬럼들 (교차 분석용)
+  if (recommendedColumns.length < 8) {
+    categories.slice(0, 2).forEach(category => {
+      if (categoryColumnMapping[category]) {
+        categoryColumnMapping[category].tertiary.forEach(colName => {
+          if (!recommendedColumns.find(c => c.column === colName) && recommendedColumns.length < 8) {
+            const colInfo = findColumnInfo(colName, allColumns);
+            if (colInfo) {
+              recommendedColumns.push({
+                column: colName,
+                description: colInfo.desc,
+                condition: colInfo.condition,
+                priority: 'low',
+                reasoning: `${category} 관심고객과 상관관계가 높은 라이프스타일 지표로 추가적인 인사이트 도출에 활용됩니다.`
+              });
+            }
+          }
+        });
+      }
+    });
+  }
+
+  // 소득 수준 추가
+  if (demographics.income === '고소득' && !recommendedColumns.find(c => c.column === 'sc_int_highincome')) {
+    recommendedColumns.push({
+      column: 'sc_int_highincome',
+      description: '고소득 예측스코어',
+      condition: '> 0.8',
+      priority: 'high',
+      reasoning: '고소득층 타겟팅으로 마케팅 ROI와 상품 단가 상승을 기대할 수 있습니다.'
+    });
+  }
+
+  // 최대 8-10개 컬럼으로 제한
+  recommendedColumns = recommendedColumns.slice(0, 10);
+
+  return {
+    query_analysis: `"${originalQuery}" - 복합적인 고객 니즈와 라이프스타일을 종합 분석하여 ${categories.length > 1 ? '다차원적' : '전방위적'} 타겟팅 전략을 수립했습니다.`,
+    target_description: generateTargetDescription(categories, demographics),
+    recommended_columns: recommendedColumns,
+    sql_query: generateComprehensiveSQL(recommendedColumns),
+    business_insights: generateComprehensiveInsights(categories, demographics, recommendedColumns),
+    estimated_target_size: estimateTargetSize(categories, demographics),
+    marketing_recommendations: generateComprehensiveMarketing(categories, demographics)
+  };
+}
+
+// 컬럼 정보 찾기 헬퍼 함수
+function findColumnInfo(columnName, allColumns) {
+  for (const [category, columns] of Object.entries(allColumns)) {
+    if (columns[columnName]) {
+      return columns[columnName];
+    }
+  }
+  return null;
+}
+
+// 타겟 설명 생성
+function generateTargetDescription(categories, demographics) {
+  let description = '';
+  
+  // 인구통계학적 특성
+  const demoDesc = [];
+  if (demographics.age) demoDesc.push(demographics.age);
+  if (demographics.gender) demoDesc.push(demographics.gender);
+  if (demographics.income) demoDesc.push(demographics.income);
+  if (demographics.lifestage) demoDesc.push(demographics.lifestage);
+  
+  if (demoDesc.length > 0) {
+    description += demoDesc.join(' ') + ' ';
+  }
+  
+  // 관심사/행동 특성
+  if (categories.length > 0) {
+    description += `${categories.slice(0, 3).join(', ')} 관련 니즈가 높고 `;
+  }
+  
+  description += '다층적인 소비 패턴과 라이프스타일을 보이는 종합적 타겟 고객군';
+  
+  return description;
+}
+
+// 종합적 SQL 쿼리 생성
+function generateComprehensiveSQL(columns) {
+  const columnNames = columns.map(col => col.column).join(', ');
+  const conditions = columns
+    .filter(col => col.priority === 'high')
+    .map(col => `${col.column} ${col.condition}`)
+    .join(' OR ');
+  
+  return `SELECT mbr_id_no, ${columnNames}
+FROM cdp_customer_data 
+WHERE (${conditions || 'sc_int_highincome > 0.7'})
+ORDER BY ${columns[0]?.column || 'sc_int_highincome'} DESC
+LIMIT 10000;`;
+}
+
+// 종합적 비즈니스 인사이트 생성
+function generateComprehensiveInsights(categories, demographics, columns) {
+  const insights = [];
+  
+  // 복합적 니즈 분석
+  if (categories.length > 1) {
+    insights.push(`${categories.slice(0, 2).join('과 ')} 영역의 복합적 니즈를 가진 고객군으로 교차 마케팅 기회가 높음`);
+  }
+  
+  // 고가치 고객 여부
+  if (columns.some(col => col.column === 'sc_int_highincome' || col.column === 'fa_int_luxury')) {
+    insights.push('고소득/프리미엄 성향 고객이 포함되어 있어 높은 LTV(Life Time Value) 기대 가능');
+  }
+  
+  // 라이프스테이지 인사이트
+  if (demographics.lifestage) {
+    insights.push(`${demographics.lifestage} 라이프스테이지 특성상 관련 상품/서비스 니즈가 동반 상승하는 시기`);
+  }
+  
+  // 디지털 활용도
+  if (columns.some(col => col.column.includes('npay'))) {
+    insights.push('네이버페이 이용 고객으로 디지털 마케팅 채널 활용도가 높고 데이터 트래킹 용이');
+  }
+  
+  // 기본 인사이트
+  insights.push('다양한 접점에서의 고객 행동 데이터를 바탕으로 한 정밀한 타겟팅 가능');
+  insights.push('개인화된 상품 추천 및 맞춤형 마케팅 메시지 전달로 전환율 극대화 기대');
+  
+  return insights.slice(0, 5); // 최대 5개로 제한
+}
+
+// 타겟 규모 추정
+function estimateTargetSize(categories, demographics) {
+  let size = 20; // 기본 20%
+  
+  // 카테고리 수에 따른 조정
+  if (categories.length > 2) size *= 0.7; // 복합 조건일수록 규모 감소
+  if (categories.length > 3) size *= 0.6;
+  
+  // 인구통계학적 조건에 따른 조정
+  if (demographics.age) size *= 0.8;
+  if (demographics.gender) size *= 0.5;
+  if (demographics.income === '고소득') size *= 0.3;
+  
+  size = Math.max(size, 2); // 최소 2%
+  size = Math.min(size, 35); // 최대 35%
+  
+  return `${Math.round(size)}-${Math.round(size * 1.5)}%`;
+}
+
+// 종합적 마케팅 추천
+function generateComprehensiveMarketing(categories, demographics) {
+  const recommendations = [];
+  
+  // 채널별 추천
+  recommendations.push('네이버 생태계 내 통합 마케팅: 검색, 쇼핑, 페이 연계 캠페인 실행');
+  
+  // 개인화 추천
+  if (categories.length > 1) {
+    recommendations.push(`${categories.slice(0, 2).join('+')} 복합 니즈 기반 크로스셀링 기회 활용`);
+  }
+  
+  // 라이프스테이지별 추천
+  if (demographics.lifestage) {
+    recommendations.push(`${demographics.lifestage} 라이프스테이지에 특화된 시기별 마케팅 캠페인 기획`);
+  }
+  
+  // 프리미엄 전략
+  if (demographics.income === '고소득') {
+    recommendations.push('VIP 등급 서비스 및 프리미엄 상품 우선 노출 전략');
+  }
+  
+  // 데이터 활용 추천
+  recommendations.push('실시간 행동 데이터 기반 동적 세그먼테이션 및 적응형 메시지 전달');
+  recommendations.push('A/B 테스트를 통한 세그먼트별 최적 메시지 및 타이밍 도출');
+  
+  return recommendations.slice(0, 6); // 최대 6개로 제한
+}
+
+// 타겟별 추천 생성 함수 (레거시 호환성용)
 function generateTargetRecommendation(targetType, originalQuery, targetAge, targetGender) {
   const recommendations = {
     '대출': {
