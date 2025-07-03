@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fetch = require('node-fetch');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -701,108 +702,132 @@ ORDER BY sc_int_golf DESC, sc_int_highincome DESC;`,
   return result;
 }
 
-// OpenAI API 호출 함수
+// OpenAI API 호출 함수 (강화된 버전)
 async function analyzeWithOpenAI(userQuery) {
   const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
   
-  // CDP 컬럼 정의 (간소화된 버전)
-  const CDP_COLUMNS_INFO = `
-CDP 컬럼 카테고리:
-
-관심사 지표 (fa_int_*):
-- fa_int_loan1stfinancial: 1금융권 신용대출 실행 고객
-- fa_int_loanpersonal: 신용대출 실행 고객  
-- fa_int_traveloverseas: 해외여행 예정 고객
-- fa_int_golf: 골프용품/골프장 결제 고객
-- fa_int_luxury: 100만원 이상 명품 결제 고객
-- fa_int_delivery: 배달 결제 고객
-- fa_int_wedding: 결혼 준비 관련 결제 고객
-
-업종별 지표 (fa_ind_*):
-- fa_ind_beauty: 미용 서비스 결제 고객
-- fa_ind_cosmetic: 뷰티 제품 결제 고객
-- fa_ind_travel: 여행 서비스 결제 고객
-- fa_ind_finance: 금융 서비스 결제 고객
-
-예측 스코어 (sc_*):
-- sc_int_loan1stfinancial: 1금융권 대출 예측스코어 (0-1)
-- sc_ind_cosmetic: 뷰티 제품 예측스코어 (0-1)
-- sc_int_golf: 골프 관련 예측스코어 (0-1)
-- sc_int_highincome: 고소득 예측스코어 (0-1)
-
-플래그 지표 (fi_npay_*):
-- fi_npay_age20/30/40: 20대/30대/40대 여부 (boolean)
-- fi_npay_genderf/m: 여성/남성 여부 (boolean)
-- fi_npay_creditcheck: 신용조회 서비스 가입 (boolean)
-`;
-
-  const prompt = `당신은 CDP(Customer Data Platform) 전문가입니다. 사용자의 자연어 질문을 분석하여 최적의 고객 세그먼테이션 전략을 제공합니다.
-
-${CDP_COLUMNS_INFO}
-
-사용자 질문: "${userQuery}"
-
-위 질문을 분석하여 다음 JSON 형식으로 응답해주세요:
-
-{
-  "query_analysis": "질문의 핵심 요구사항 분석",
-  "target_description": "타겟 고객군 설명", 
-  "recommended_columns": [
-    {
-      "column": "컬럼명",
-      "description": "컬럼 설명",
-      "condition": "추천 조건 (예: > 0.7, IS NOT NULL)",
-      "priority": "high|medium|low",
-      "reasoning": "선택 이유"
-    }
-  ],
-  "sql_query": "실행 가능한 SELECT 쿼리",
-  "business_insights": ["비즈니스 인사이트 배열"],
-  "estimated_target_size": "예상 타겟 규모 (%)",
-  "marketing_recommendations": ["마케팅 추천사항 배열"]
-}
-
-반드시 유효한 JSON 형식으로만 응답해주세요.`;
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a CDP expert. Always respond in valid JSON format only.'
-        },
-        {
-          role: 'user', 
-          content: prompt
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 2000
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI API Error: ${response.status} - ${errorText}`);
+  console.log('🔍 OpenAI API 호출 상세 정보:');
+  console.log('   - API 키 존재:', !!OPENAI_API_KEY);
+  console.log('   - API 키 길이:', OPENAI_API_KEY?.length || 0);
+  console.log('   - API 키 형식 확인:', OPENAI_API_KEY?.startsWith('sk-') ? '✅ 올바름' : '❌ 잘못됨');
+  
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY가 설정되지 않았습니다.');
+  }
+  
+  if (!OPENAI_API_KEY.startsWith('sk-')) {
+    throw new Error('API 키 형식이 올바르지 않습니다. sk-로 시작해야 합니다.');
   }
 
-  const data = await response.json();
-  const aiResponse = data.choices[0].message.content;
+  const requestBody = {
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a CDP expert. Always respond in valid JSON format only.'
+      },
+      {
+        role: 'user', 
+        content: `CDP 전문가로서 다음 질문을 분석해주세요: "${userQuery}"`
+      }
+    ],
+    temperature: 0.7,
+    max_tokens: 2000
+  };
+
+  console.log('📤 OpenAI API 요청:');
+  console.log('   - 모델:', requestBody.model);
+  console.log('   - 메시지 수:', requestBody.messages.length);
+  console.log('   - 요청 크기:', JSON.stringify(requestBody).length, 'bytes');
 
   try {
-    // JSON 파싱 시도
-    const parsed = JSON.parse(aiResponse);
-    return parsed;
-  } catch (parseError) {
-    console.error('JSON 파싱 실패:', parseError.message);
-    console.error('원본 응답:', aiResponse);
-    throw new Error(`JSON Parse Error: ${parseError.message}`);
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'User-Agent': 'CDP-Analysis-Platform/1.0'
+      },
+      body: JSON.stringify(requestBody),
+      timeout: 30000 // 30초 타임아웃
+    });
+
+    console.log('📥 OpenAI API 응답:');
+    console.log('   - 상태 코드:', response.status);
+    console.log('   - 상태 텍스트:', response.statusText);
+    console.log('   - 헤더:', Object.fromEntries(response.headers.entries()));
+
+    const responseText = await response.text();
+    console.log('   - 응답 크기:', responseText.length, 'bytes');
+
+    if (!response.ok) {
+      console.error('❌ OpenAI API 오류 상세:');
+      console.error('   - 상태:', response.status);
+      console.error('   - 응답:', responseText);
+      
+      let errorDetail = responseText;
+      let suggestion = '';
+      
+      try {
+        const errorData = JSON.parse(responseText);
+        errorDetail = errorData.error?.message || responseText;
+        
+        // 구체적인 오류별 해결 방안
+        if (response.status === 401) {
+          suggestion = '1. API 키를 다시 확인해주세요\n2. OpenAI 대시보드에서 API 키 상태 확인\n3. 키 앞뒤 공백 제거';
+        } else if (response.status === 429) {
+          suggestion = '1. API 사용량 한도 초과\n2. OpenAI 대시보드에서 결제 정보 확인\n3. 몇 분 후 다시 시도';
+        } else if (response.status === 400) {
+          suggestion = '1. 요청 형식 오류\n2. 모델명 확인\n3. 메시지 길이 확인';
+        } else if (response.status === 403) {
+          suggestion = '1. API 키 권한 문제\n2. 계정 상태 확인\n3. 결제 정보 업데이트';
+        }
+      } catch (e) {
+        console.error('   - JSON 파싱 실패:', e.message);
+      }
+      
+      throw new Error(`OpenAI API Error (${response.status}): ${errorDetail}${suggestion ? '\n\n해결방법:\n' + suggestion : ''}`);
+    }
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+      console.log('✅ JSON 파싱 성공');
+    } catch (parseError) {
+      console.error('❌ 응답 JSON 파싱 실패:', parseError.message);
+      console.error('   - 응답 내용:', responseText.substring(0, 500));
+      throw new Error(`응답 JSON 파싱 실패: ${parseError.message}`);
+    }
+
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      console.error('❌ 응답 구조 오류:', data);
+      throw new Error('OpenAI 응답 구조가 예상과 다릅니다.');
+    }
+
+    const aiResponse = data.choices[0].message.content;
+    console.log('🤖 AI 응답 길이:', aiResponse.length, 'characters');
+    console.log('   - 응답 시작:', aiResponse.substring(0, 100));
+
+    try {
+      const parsed = JSON.parse(aiResponse);
+      console.log('✅ AI 응답 JSON 파싱 성공');
+      return parsed;
+    } catch (parseError) {
+      console.error('❌ AI 응답 JSON 파싱 실패:', parseError.message);
+      console.error('   - AI 응답:', aiResponse.substring(0, 500));
+      throw new Error(`AI 응답 JSON 파싱 실패: ${parseError.message}\n\n응답 내용:\n${aiResponse.substring(0, 300)}...`);
+    }
+
+  } catch (fetchError) {
+    console.error('💥 Fetch 오류:', fetchError.message);
+    
+    if (fetchError.code === 'ENOTFOUND') {
+      throw new Error('네트워크 오류: OpenAI API 서버에 연결할 수 없습니다.');
+    } else if (fetchError.code === 'ETIMEDOUT') {
+      throw new Error('타임아웃 오류: OpenAI API 응답이 너무 오래 걸립니다.');
+    } else {
+      throw new Error(`네트워크 오류: ${fetchError.message}`);
+    }
   }
 }
 
@@ -833,73 +858,190 @@ app.get('/api/debug', (req, res) => {
   });
 });
 
-// OpenAI API 키 테스트 엔드포인트
+// OpenAI API 키 테스트 엔드포인트 (강화된 버전)
 app.get('/api/test-openai', async (req, res) => {
   try {
+    console.log('🧪 OpenAI API 키 테스트 시작...');
+    
+    // 1. 환경변수 존재 확인
     if (!process.env.OPENAI_API_KEY) {
       return res.json({
         success: false,
+        step: 'env_check',
         error: 'OPENAI_API_KEY 환경변수가 설정되지 않았습니다.',
-        suggestion: 'Railway Variables에서 OPENAI_API_KEY를 설정해주세요.'
+        suggestion: 'Railway Variables에서 OPENAI_API_KEY를 설정해주세요.',
+        debug: {
+          allEnvKeys: Object.keys(process.env).filter(key => key.includes('OPENAI')),
+          nodeEnv: process.env.NODE_ENV
+        }
       });
     }
 
-    console.log('🧪 OpenAI API 키 테스트 시작...');
+    // 2. API 키 형식 확인
+    const apiKey = process.env.OPENAI_API_KEY;
+    console.log('🔍 API 키 검증:');
+    console.log('   - 길이:', apiKey.length);
+    console.log('   - 시작 문자:', apiKey.substring(0, 8));
+    console.log('   - 형식 확인:', apiKey.startsWith('sk-') ? '✅' : '❌');
     
-    // 간단한 API 테스트 호출
+    if (!apiKey.startsWith('sk-')) {
+      return res.json({
+        success: false,
+        step: 'format_check',
+        error: 'API 키 형식이 올바르지 않습니다.',
+        suggestion: 'OpenAI API 키는 sk-로 시작해야 합니다.',
+        debug: {
+          keyLength: apiKey.length,
+          keyPrefix: apiKey.substring(0, 10),
+          expectedFormat: 'sk-proj-...'
+        }
+      });
+    }
+
+    // 3. 네트워크 연결 테스트
+    console.log('🌐 네트워크 연결 테스트 중...');
+    
     const response = await fetch('https://api.openai.com/v1/models', {
+      method: 'GET',
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-      }
+        'Authorization': `Bearer ${apiKey}`,
+        'User-Agent': 'CDP-Analysis-Platform/1.0'
+      },
+      timeout: 15000
     });
 
+    console.log('📥 API 응답 수신:');
+    console.log('   - 상태:', response.status);
+    console.log('   - 헤더:', Object.fromEntries(response.headers.entries()));
+
     const responseText = await response.text();
+    console.log('   - 응답 크기:', responseText.length);
     
     if (!response.ok) {
-      console.error('❌ OpenAI API 테스트 실패:', response.status, responseText);
+      console.error('❌ OpenAI API 테스트 실패');
+      console.error('   - 상태:', response.status);
+      console.error('   - 응답:', responseText);
       
       let errorDetail = '';
       let suggestion = '';
+      let debugInfo = {};
       
       try {
         const errorData = JSON.parse(responseText);
         errorDetail = errorData.error?.message || responseText;
+        debugInfo.errorCode = errorData.error?.code;
+        debugInfo.errorType = errorData.error?.type;
       } catch (e) {
         errorDetail = responseText;
       }
       
-      if (response.status === 401) {
-        suggestion = '1. API 키가 올바른지 확인하세요\n2. OpenAI 대시보드에서 API 키 유효성 확인\n3. API 키 앞뒤 공백 제거';
-      } else if (response.status === 429) {
-        suggestion = '1. API 사용량 한도 초과\n2. 결제 정보 확인\n3. 잠시 후 다시 시도';
-      } else if (response.status === 403) {
-        suggestion = '1. API 키 권한 확인\n2. 계정 상태 확인';
+      // 상세한 해결 방안 제시
+      switch (response.status) {
+        case 401:
+          suggestion = `인증 오류 해결 방법:
+1. OpenAI 대시보드 (platform.openai.com)에서 API 키 상태 확인
+2. API 키를 새로 생성하여 Railway Variables에 재설정
+3. API 키 복사 시 앞뒤 공백이 없는지 확인
+4. 계정에 충분한 크레딧이 있는지 확인`;
+          break;
+        case 429:
+          suggestion = `사용량 한도 초과 해결 방법:
+1. OpenAI 대시보드에서 Usage 확인
+2. Billing 섹션에서 결제 방법 등록/업데이트
+3. Rate limit이 초과된 경우 잠시 후 재시도
+4. Usage limits 설정 확인`;
+          break;
+        case 403:
+          suggestion = `권한 오류 해결 방법:
+1. API 키 권한 확인 (사용 가능한 모델 확인)
+2. 계정 상태 확인 (정지되지 않았는지)
+3. 결제 정보 업데이트`;
+          break;
+        default:
+          suggestion = `일반적인 해결 방법:
+1. 몇 분 후 다시 시도
+2. OpenAI 서비스 상태 확인 (status.openai.com)
+3. 네트워크 연결 확인`;
       }
       
       return res.json({
         success: false,
+        step: 'api_call',
         status: response.status,
         error: errorDetail,
-        suggestion: suggestion
+        suggestion: suggestion,
+        debug: {
+          ...debugInfo,
+          responseSize: responseText.length,
+          timestamp: new Date().toISOString()
+        }
       });
     }
 
-    console.log('✅ OpenAI API 키 테스트 성공');
-    const data = JSON.parse(responseText);
+    // 4. 응답 파싱 및 검증
+    let data;
+    try {
+      data = JSON.parse(responseText);
+      console.log('✅ JSON 파싱 성공');
+    } catch (parseError) {
+      console.error('❌ JSON 파싱 실패:', parseError.message);
+      return res.json({
+        success: false,
+        step: 'json_parse',
+        error: 'API 응답 JSON 파싱 실패',
+        suggestion: 'OpenAI API 응답 형식이 예상과 다릅니다.',
+        debug: {
+          parseError: parseError.message,
+          responsePreview: responseText.substring(0, 200)
+        }
+      });
+    }
+
+    // 5. 성공 응답
+    console.log('✅ OpenAI API 키 테스트 완전 성공');
     
     return res.json({
       success: true,
-      message: 'OpenAI API 키가 정상적으로 작동합니다.',
-      modelsCount: data.data?.length || 0,
-      apiKeyPrefix: process.env.OPENAI_API_KEY.substring(0, 10) + '...'
+      message: '🎉 OpenAI API 키가 정상적으로 작동합니다!',
+      details: {
+        modelsCount: data.data?.length || 0,
+        availableModels: data.data?.slice(0, 5).map(m => m.id) || [],
+        apiKeyPrefix: apiKey.substring(0, 12) + '...',
+        testTimestamp: new Date().toISOString()
+      },
+      nextSteps: [
+        '이제 AI 분석 기능이 정상적으로 작동할 것입니다.',
+        '질문을 입력하여 실제 OpenAI 분석을 테스트해보세요.'
+      ]
     });
 
   } catch (error) {
-    console.error('💥 OpenAI API 테스트 중 오류:', error);
+    console.error('💥 OpenAI API 테스트 중 예외:', error);
+    
+    let errorType = 'unknown';
+    let suggestion = '알 수 없는 오류가 발생했습니다.';
+    
+    if (error.code === 'ENOTFOUND') {
+      errorType = 'network';
+      suggestion = '인터넷 연결을 확인하고 다시 시도해주세요.';
+    } else if (error.code === 'ETIMEDOUT') {
+      errorType = 'timeout';
+      suggestion = '네트워크가 느리거나 OpenAI 서버가 응답하지 않습니다. 잠시 후 다시 시도해주세요.';
+    } else if (error.message.includes('fetch')) {
+      errorType = 'fetch';
+      suggestion = 'HTTP 요청 중 오류가 발생했습니다. 서버 환경을 확인해주세요.';
+    }
+    
     return res.json({
       success: false,
+      step: 'exception',
       error: error.message,
-      suggestion: '네트워크 연결을 확인하고 다시 시도해주세요.'
+      errorType: errorType,
+      suggestion: suggestion,
+      debug: {
+        stack: error.stack?.split('\n').slice(0, 3),
+        timestamp: new Date().toISOString()
+      }
     });
   }
 });

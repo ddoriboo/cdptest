@@ -1575,7 +1575,7 @@ ORDER BY sc_int_highincome DESC;`,
             }
         }
         
-        // OpenAI API 키 테스트
+        // OpenAI API 키 테스트 (강화된 버전)
         async function testOpenAIAPI() {
             try {
                 showDebugInfo('OpenAI API 키 테스트 중...', 'debug');
@@ -1584,34 +1584,102 @@ ORDER BY sc_int_highincome DESC;`,
                 const data = await response.json();
                 
                 if (data.success) {
-                    let successMessage = `✅ OpenAI API 키 테스트 성공!\n\n`;
-                    successMessage += `🎉 메시지: ${data.message}\n`;
-                    successMessage += `📊 사용 가능한 모델 수: ${data.modelsCount}개\n`;
-                    successMessage += `🔤 API 키: ${data.apiKeyPrefix}\n\n`;
-                    successMessage += `이제 AI 분석이 정상적으로 작동할 것입니다!`;
+                    // 성공 케이스
+                    let successMessage = `🎉 OpenAI API 키 테스트 성공!\n\n`;
+                    successMessage += `📋 메시지: ${data.message}\n\n`;
+                    
+                    if (data.details) {
+                        successMessage += `📊 상세 정보:\n`;
+                        successMessage += `   • 사용 가능한 모델: ${data.details.modelsCount}개\n`;
+                        if (data.details.availableModels?.length > 0) {
+                            successMessage += `   • 주요 모델: ${data.details.availableModels.slice(0, 3).join(', ')}\n`;
+                        }
+                        successMessage += `   • API 키: ${data.details.apiKeyPrefix}\n`;
+                        successMessage += `   • 테스트 시각: ${new Date(data.details.testTimestamp).toLocaleString('ko-KR')}\n\n`;
+                    }
+                    
+                    if (data.nextSteps?.length > 0) {
+                        successMessage += `📌 다음 단계:\n`;
+                        data.nextSteps.forEach((step, i) => {
+                            successMessage += `${i + 1}. ${step}\n`;
+                        });
+                    }
                     
                     alert(successMessage);
                     showDebugInfo('OpenAI API 키 테스트 성공', 'success');
-                } else {
-                    let errorMessage = `❌ OpenAI API 키 테스트 실패\n\n`;
-                    errorMessage += `🚨 오류: ${data.error}\n\n`;
                     
-                    if (data.status) {
-                        errorMessage += `📊 HTTP 상태: ${data.status}\n`;
+                } else {
+                    // 실패 케이스 - 상세 분석
+                    let errorMessage = `❌ OpenAI API 키 테스트 실패\n\n`;
+                    
+                    // 단계별 오류 표시
+                    if (data.step) {
+                        const stepNames = {
+                            'env_check': '환경변수 확인',
+                            'format_check': 'API 키 형식 확인',
+                            'api_call': 'API 호출',
+                            'json_parse': '응답 파싱',
+                            'exception': '예외 처리'
+                        };
+                        errorMessage += `🔍 실패 단계: ${stepNames[data.step] || data.step}\n`;
                     }
                     
+                    errorMessage += `🚨 오류: ${data.error}\n\n`;
+                    
+                    // HTTP 상태 코드
+                    if (data.status) {
+                        const statusMeanings = {
+                            401: '인증 실패 (API 키 문제)',
+                            403: '권한 거부 (계정 상태 문제)', 
+                            429: '사용량 한도 초과',
+                            500: '서버 오류'
+                        };
+                        errorMessage += `📊 HTTP 상태: ${data.status} (${statusMeanings[data.status] || '알 수 없는 오류'})\n\n`;
+                    }
+                    
+                    // 해결 방법
                     if (data.suggestion) {
-                        errorMessage += `💡 해결 방법:\n${data.suggestion}`;
+                        errorMessage += `💡 해결 방법:\n${data.suggestion}\n\n`;
+                    }
+                    
+                    // 디버그 정보 (개발자용)
+                    if (data.debug) {
+                        errorMessage += `🔧 디버그 정보:\n`;
+                        if (data.debug.keyLength) {
+                            errorMessage += `   • API 키 길이: ${data.debug.keyLength}자\n`;
+                        }
+                        if (data.debug.keyPrefix) {
+                            errorMessage += `   • API 키 시작: ${data.debug.keyPrefix}\n`;
+                        }
+                        if (data.debug.errorCode) {
+                            errorMessage += `   • 오류 코드: ${data.debug.errorCode}\n`;
+                        }
+                        if (data.debug.responseSize) {
+                            errorMessage += `   • 응답 크기: ${data.debug.responseSize} bytes\n`;
+                        }
+                        errorMessage += `   • 시각: ${new Date(data.debug.timestamp || Date.now()).toLocaleString('ko-KR')}\n`;
                     }
                     
                     alert(errorMessage);
-                    showDebugInfo(`OpenAI API 키 테스트 실패: ${data.error}`, 'error');
+                    showDebugInfo(`OpenAI API 키 테스트 실패 [${data.step}]: ${data.error}`, 'error');
                 }
                 
             } catch (error) {
-                console.error('OpenAI API 테스트 오류:', error);
-                showDebugInfo(`API 테스트 실패: ${error.message}`, 'error');
-                alert(`❌ API 테스트 중 오류 발생\n\n${error.message}`);
+                console.error('OpenAI API 테스트 예외:', error);
+                showDebugInfo(`API 테스트 예외: ${error.message}`, 'error');
+                
+                let errorMessage = `💥 API 테스트 중 예외 발생\n\n`;
+                errorMessage += `오류: ${error.message}\n\n`;
+                errorMessage += `가능한 원인:\n`;
+                errorMessage += `1. 네트워크 연결 문제\n`;
+                errorMessage += `2. 서버 응답 지연\n`;
+                errorMessage += `3. Railway 서버 문제\n\n`;
+                errorMessage += `해결 방법:\n`;
+                errorMessage += `1. 네트워크 연결 확인\n`;
+                errorMessage += `2. 잠시 후 다시 시도\n`;
+                errorMessage += `3. Railway 로그 확인`;
+                
+                alert(errorMessage);
             }
         }
         
