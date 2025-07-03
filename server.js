@@ -756,202 +756,121 @@ ORDER BY sc_int_golf DESC, sc_int_highincome DESC;`,
   return result;
 }
 
-// Ultra Robust OpenAI API 호출 함수 (3회 재시도 + 상세 진단)
-async function analyzeWithOpenAI(userQuery) {
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim(); // 공백 제거
+// Claude API 호출 함수
+async function analyzeWithClaude(userQuery) {
+  const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY?.trim();
   
-  console.log('\n🚀 [ULTRA ROBUST] OpenAI API 호출 시작');
-  console.log('='.repeat(50));
+  console.log('\n🤖 Claude API 호출 시작');
   console.log('📊 환경 정보:');
   console.log('   - Node.js 버전:', process.version);
-  console.log('   - Platform:', process.platform);
-  console.log('   - Railway 환경:', process.env.RAILWAY_ENVIRONMENT || 'local');
-  console.log('   - Fetch 구현:', typeof fetch);
+  console.log('   - Claude API 키 존재:', !!CLAUDE_API_KEY);
+  console.log('   - API 키 길이:', CLAUDE_API_KEY?.length || 0);
   
-  console.log('🔑 API 키 검증:');
-  console.log('   - 존재 여부:', !!OPENAI_API_KEY);
-  console.log('   - 길이:', OPENAI_API_KEY?.length || 0);
-  console.log('   - 형식 확인:', OPENAI_API_KEY?.startsWith('sk-') ? '✅ 올바름' : '❌ 잘못됨');
-  console.log('   - 마지막 4자리:', OPENAI_API_KEY ? '...' + OPENAI_API_KEY.slice(-4) : 'N/A');
-  
-  if (!OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY가 설정되지 않았습니다.');
+  if (!CLAUDE_API_KEY) {
+    throw new Error('CLAUDE_API_KEY가 설정되지 않았습니다.');
   }
   
-  if (!OPENAI_API_KEY.startsWith('sk-')) {
-    throw new Error(`API 키 형식이 올바르지 않습니다. 현재: ${OPENAI_API_KEY.substring(0, 10)}... (sk-로 시작해야 함)`);
+  if (!CLAUDE_API_KEY.startsWith('sk-ant-api')) {
+    throw new Error('Claude API 키 형식이 올바르지 않습니다. sk-ant-api로 시작해야 합니다.');
   }
 
-  // 더 간단하고 확실한 요청으로 변경
   const requestBody = {
-    model: 'gpt-4o-mini',
+    model: 'claude-3-haiku-20240307',
+    max_tokens: 1500,
+    temperature: 0.3,
     messages: [
       {
-        role: 'user', 
-        content: `CDP 고객 분석 전문가로서 "${userQuery}" 질문에 대해 JSON 형식으로 답변해주세요. 응답 형식: {"analysis": "분석내용", "columns": ["컬럼1", "컬럼2"], "insights": ["인사이트1", "인사이트2"]}`
+        role: 'user',
+        content: `CDP 고객 분석 전문가로서 "${userQuery}" 질문에 대해 다음 JSON 형식으로 정확히 답변해주세요:\n\n{
+  "query_analysis": "질문 분석 내용",
+  "target_description": "타겟 고객 설명",
+  "recommended_columns": [
+    {
+      "column": "컬럼명",
+      "description": "컬럼 설명",
+      "condition": "조건",
+      "priority": "high/medium/low",
+      "reasoning": "선택 이유"
+    }
+  ],
+  "sql_query": "SQL 쿼리",
+  "business_insights": ["인사이트1", "인사이트2"],
+  "estimated_target_size": "예상 규모",
+  "marketing_recommendations": ["추천1", "추천2"]
+}`
       }
-    ],
-    temperature: 0.3,
-    max_tokens: 1500,
-    top_p: 1,
-    frequency_penalty: 0,
-    presence_penalty: 0
+    ]
   };
 
-  console.log('📤 요청 정보:');
-  console.log('   - 모델:', requestBody.model);
-  console.log('   - 메시지 길이:', requestBody.messages[0].content.length);
-  console.log('   - 요청 바디 크기:', JSON.stringify(requestBody).length, 'bytes');
-
-  // 3회 재시도 로직
-  let lastError = null;
-  const maxRetries = 3;
+  console.log('📤 Claude API 요청 시작...');
   
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(`\n🔄 시도 ${attempt}/${maxRetries}`);
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(requestBody)
+    });
     
-    try {
-      console.log('🌐 HTTP 요청 시작...');
-      
-      const startTime = Date.now();
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-          'User-Agent': 'CDP-Platform/1.0',
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache'
-        },
-        body: JSON.stringify(requestBody)
-      });
-      
-      const duration = Date.now() - startTime;
-      console.log(`📥 응답 수신 (${duration}ms):`);
-      console.log('   - 상태:', response.status, response.statusText);
-      console.log('   - Content-Type:', response.headers.get('content-type'));
-      console.log('   - Content-Length:', response.headers.get('content-length'));
-
-      const responseText = await response.text();
-      console.log('   - 응답 크기:', responseText.length, 'bytes');
-      console.log('   - 응답 시작:', responseText.substring(0, 100) + '...');
-
-      if (!response.ok) {
-        console.error(`❌ HTTP 오류 ${response.status}:`);
-        console.error('   - 전체 응답:', responseText);
-        
-        let errorDetail = 'Unknown error';
-        let errorCode = 'unknown';
-        
-        try {
-          const errorData = JSON.parse(responseText);
-          errorDetail = errorData.error?.message || responseText;
-          errorCode = errorData.error?.code || 'unknown';
-          console.error('   - 파싱된 오류:', errorData);
-        } catch (e) {
-          console.error('   - JSON 파싱 실패, 원본 사용');
-        }
-        
-        // 재시도 가능한 오류인지 확인
-        const retryableErrors = [429, 500, 502, 503, 504];
-        if (retryableErrors.includes(response.status) && attempt < maxRetries) {
-          const waitTime = Math.pow(2, attempt) * 1000; // 지수 백오프
-          console.log(`⏱️ ${waitTime}ms 대기 후 재시도...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          lastError = new Error(`HTTP ${response.status}: ${errorDetail}`);
-          continue;
-        }
-        
-        throw new Error(`OpenAI API Error (${response.status}): ${errorDetail}\nError Code: ${errorCode}\nAttempt: ${attempt}/${maxRetries}`);
-      }
-
-      // 성공적인 응답 처리
-      let data;
-      try {
-        data = JSON.parse(responseText);
-        console.log('✅ 응답 JSON 파싱 성공');
-        console.log('   - choices 수:', data.choices?.length || 0);
-        console.log('   - usage:', data.usage);
-      } catch (parseError) {
-        console.error('❌ 응답 JSON 파싱 실패:', parseError.message);
-        throw new Error(`응답 JSON 파싱 실패: ${parseError.message}\n응답: ${responseText.substring(0, 300)}...`);
-      }
-
-      if (!data.choices?.[0]?.message?.content) {
-        console.error('❌ 응답 구조 오류:', JSON.stringify(data, null, 2));
-        throw new Error('OpenAI 응답에 예상된 content가 없습니다.');
-      }
-
-      const aiResponse = data.choices[0].message.content.trim();
-      console.log('🤖 AI 응답:');
-      console.log('   - 길이:', aiResponse.length, 'characters');
-      console.log('   - 내용 미리보기:', aiResponse.substring(0, 200) + '...');
-
-      // JSON 응답 파싱 시도
-      try {
-        const parsed = JSON.parse(aiResponse);
-        console.log('✅ AI 응답 JSON 파싱 성공');
-        console.log('='.repeat(50));
-        return parsed;
-      } catch (parseError) {
-        console.log('⚠️ AI 응답이 JSON이 아님, 텍스트 응답을 JSON으로 변환...');
-        
-        // 텍스트 응답을 JSON 형태로 변환
-        const fallbackResponse = {
-          query_analysis: `"${userQuery}"에 대한 AI 분석이 완료되었습니다.`,
-          target_description: '분석된 고객 세그먼트',
-          recommended_columns: [
-            {
-              column: 'sc_int_highincome',
-              description: '고소득 예측스코어',
-              condition: '> 0.7',
-              priority: 'high',
-              reasoning: 'AI 분석 결과 추천된 핵심 지표입니다.'
-            }
-          ],
-          sql_query: 'SELECT mbr_id_no, sc_int_highincome FROM cdp_customer_data WHERE sc_int_highincome > 0.7;',
-          business_insights: [
-            'AI 분석을 통해 도출된 비즈니스 인사이트입니다.',
-            aiResponse.substring(0, 100) + '...'
-          ],
-          estimated_target_size: '10-15%',
-          marketing_recommendations: [
-            'AI 추천 마케팅 전략을 적용하세요.',
-            'OpenAI 응답: ' + aiResponse.substring(0, 100) + '...'
-          ],
-          _ai_response: aiResponse // 원본 AI 응답 포함
-        };
-        
-        console.log('✅ 텍스트 응답을 JSON으로 변환 완료');
-        console.log('='.repeat(50));
-        return fallbackResponse;
-      }
-
-    } catch (error) {
-      console.error(`💥 시도 ${attempt} 실패:`, error.message);
-      lastError = error;
-      
-      // 네트워크 오류인 경우 재시도
-      if ((error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET') && attempt < maxRetries) {
-        const waitTime = Math.pow(2, attempt) * 1000;
-        console.log(`⏱️ 네트워크 오류, ${waitTime}ms 대기 후 재시도...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
-      }
-      
-      // 마지막 시도가 아니면 재시도
-      if (attempt < maxRetries) {
-        const waitTime = 2000;
-        console.log(`⏱️ ${waitTime}ms 대기 후 재시도...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        continue;
-      }
+    console.log('📥 Claude API 응답:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Claude API 오류:', errorText);
+      throw new Error(`Claude API Error (${response.status}): ${errorText}`);
     }
+    
+    const data = await response.json();
+    console.log('✅ Claude API 응답 성공');
+    
+    if (!data.content?.[0]?.text) {
+      throw new Error('Claude 응답에 예상된 content가 없습니다.');
+    }
+    
+    const claudeResponse = data.content[0].text.trim();
+    console.log('🤖 Claude 응답 길이:', claudeResponse.length, 'characters');
+    
+    // JSON 파싱 시도
+    try {
+      const parsed = JSON.parse(claudeResponse);
+      console.log('✅ Claude 응답 JSON 파싱 성공');
+      return parsed;
+    } catch (parseError) {
+      console.log('⚠️ Claude 응답이 JSON이 아님, 폴백 처리...');
+      
+      // 폴백 응답 생성
+      return {
+        query_analysis: `"${userQuery}"에 대한 Claude 분석이 완료되었습니다.`,
+        target_description: '분석된 고객 세그먼트',
+        recommended_columns: [
+          {
+            column: 'sc_int_highincome',
+            description: '고소득 예측스코어',
+            condition: '> 0.7',
+            priority: 'high',
+            reasoning: 'Claude 분석 결과 추천된 핵심 지표입니다.'
+          }
+        ],
+        sql_query: 'SELECT mbr_id_no, sc_int_highincome FROM cdp_customer_data WHERE sc_int_highincome > 0.7;',
+        business_insights: [
+          'Claude 분석을 통해 도출된 비즈니스 인사이트입니다.',
+          claudeResponse.substring(0, 100) + '...'
+        ],
+        estimated_target_size: '10-15%',
+        marketing_recommendations: [
+          'Claude 추천 마케팅 전략을 적용하세요.'
+        ],
+        _claude_response: claudeResponse
+      };
+    }
+    
+  } catch (error) {
+    console.error('💥 Claude API 호출 실패:', error.message);
+    throw error;
   }
-  
-  console.log('💥 모든 시도 실패');
-  console.log('='.repeat(50));
-  throw lastError || new Error('모든 OpenAI API 호출 시도가 실패했습니다.');
 }
 
 // Parse JSON bodies
@@ -1139,7 +1058,7 @@ app.get('/api/test-openai', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('💥 OpenAI API 테스트 중 예외:', error);
+    console.error('💥 Claude API 테스트 중 예외:', error);
     
     let errorType = 'unknown';
     let suggestion = '알 수 없는 오류가 발생했습니다.';
@@ -1149,7 +1068,7 @@ app.get('/api/test-openai', async (req, res) => {
       suggestion = '인터넷 연결을 확인하고 다시 시도해주세요.';
     } else if (error.code === 'ETIMEDOUT') {
       errorType = 'timeout';
-      suggestion = '네트워크가 느리거나 OpenAI 서버가 응답하지 않습니다. 잠시 후 다시 시도해주세요.';
+      suggestion = '네트워크가 느리거나 Claude 서버가 응답하지 않습니다. 잠시 후 다시 시도해주세요.';
     } else if (error.message.includes('fetch')) {
       errorType = 'fetch';
       suggestion = 'HTTP 요청 중 오류가 발생했습니다. 서버 환경을 확인해주세요.';
@@ -1178,8 +1097,8 @@ app.post('/api/analyze', async (req, res) => {
     
     console.log(`\n🔍 [${new Date().toISOString()}] 새로운 분석 요청:`, query);
     console.log(`📋 환경변수 상태:`);
-    console.log(`   - OPENAI_API_KEY 존재: ${!!process.env.OPENAI_API_KEY}`);
-    console.log(`   - API 키 길이: ${process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0}`);
+    console.log(`   - CLAUDE_API_KEY 존재: ${!!process.env.CLAUDE_API_KEY}`);
+    console.log(`   - API 키 길이: ${process.env.CLAUDE_API_KEY ? process.env.CLAUDE_API_KEY.length : 0}`);
     console.log(`   - NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
     
     // 입력 유효성 검사
@@ -1190,28 +1109,22 @@ app.post('/api/analyze', async (req, res) => {
     let result;
     let analysisMethod = 'unknown';
     
-    // OpenAI API 키가 있으면 실제 AI 분석 시도
-    if (process.env.OPENAI_API_KEY) {
+    // Claude API 키가 있으면 실제 AI 분석 시도
+    if (process.env.CLAUDE_API_KEY) {
       try {
-        console.log('🤖 OpenAI API 호출 시작...');
-        result = await analyzeWithOpenAI(query);
-        analysisMethod = 'openai';
-        console.log('✅ OpenAI API 응답 성공');
+        console.log('🤖 Claude API 호출 시작...');
+        result = await analyzeWithClaude(query);
+        analysisMethod = 'claude';
+        console.log('✅ Claude API 응답 성공');
       } catch (apiError) {
-        console.error('❌ OpenAI API 오류:', apiError.message);
-        console.error('   상세 에러:', apiError);
-        console.error('   API 키 상태:', {
-          hasKey: !!process.env.OPENAI_API_KEY,
-          keyLength: process.env.OPENAI_API_KEY?.length,
-          keyPrefix: process.env.OPENAI_API_KEY?.substring(0, 10) + '...'
-        });
+        console.error('❌ Claude API 오류:', apiError.message);
         console.log('🔄 Fallback으로 전환');
         result = generateSmartFallbackResult(query);
-        result._apiError = apiError.message; // 클라이언트에 오류 정보 전달
+        result._apiError = apiError.message;
         analysisMethod = 'fallback_after_error';
       }
     } else {
-      console.log('⚠️  OpenAI API 키 없음 - Fallback 사용');
+      console.log('⚠️  Claude API 키 없음 - Fallback 사용');
       result = generateSmartFallbackResult(query);
       analysisMethod = 'fallback_no_key';
     }

@@ -1,0 +1,75 @@
+{
+  "(광고) 미뤄두었던 약관동의 완료하고 2023년 나의 신용분석 리포트 받으세요!": {
+    "message_tone": "reminder",
+    "call_to_action": "complete_action",
+    "psychological_triggers": [
+      "fomo",
+      "benefit"
+    ],
+    "content_elements": {
+      "emoji_count": 0,
+      "has_question": false,
+      "has_numbers": true,
+      "has_percentage": false,
+      "has_time_reference": true,
+      "has_arrow": false
+    },
+    "offer_type": "report",
+    "target_emotion": "relief"
+  },
+  "(광고) 한도가 달라졌을까? 내 금리·한도 확인할 시간이에요👉": {
+    "message_tone": "urgent",
+    "call_to_action": "check_info",
+    "psychological_triggers": [
+      "curiosity",
+      "urgency"
+    ],
+    "content_elements": {
+      "emoji_count": 1,
+      "has_question": true,
+      "has_numbers": false,
+      "has_percentage": false,
+      "has_time_reference": true,
+      "has_arrow": true
+    },
+    "offer_type": "limit_check",
+    "target_emotion": "curiosity"
+  },
+  "(광고) 대출 갈아타기 좋은 시간이 시작됐어요👉": {
+    "message_tone": "persuasive",
+    "call_to_action": "click_now",
+    "psychological_triggers": [
+      "urgency",
+      "benefit"
+    ],
+    "content_elements": {
+      "emoji_count": 1,
+      "has_question": false,
+      "has_numbers": false,
+      "has_percentage": false,
+      "has_time_reference": true,
+      "has_arrow": true
+    },
+    "offer_type": "refinancing",
+    "target_emotion": "hope"
+  },
+  "(광고)⌛사전신청 마감임박! 주담대 이자 줄이고 최대 1️⃣만원도 받자>": {
+    "message_tone": "urgent",
+    "call_to_action": "click_now",
+    "psychological_triggers": [
+      "fomo",
+      "urgency",
+      "benefit"
+    ],
+    "content_elements": {
+      "emoji_count": 3,
+      "has_question": false,
+      "has_numbers": true,
+      "has_percentage": false,
+      "has_time_reference": true,
+      "has_arrow": true
+    },
+    "offer_type": "event",
+    "target_emotion": "excitement"
+  }
+}
