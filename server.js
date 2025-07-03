@@ -318,6 +318,111 @@ ORDER BY sc_int_golf DESC, sc_int_highincome DESC;`,
   return result;
 }
 
+// OpenAI API 호출 함수
+async function analyzeWithOpenAI(userQuery) {
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  
+  // CDP 컬럼 정의 (간소화된 버전)
+  const CDP_COLUMNS_INFO = `
+CDP 컬럼 카테고리:
+
+관심사 지표 (fa_int_*):
+- fa_int_loan1stfinancial: 1금융권 신용대출 실행 고객
+- fa_int_loanpersonal: 신용대출 실행 고객  
+- fa_int_traveloverseas: 해외여행 예정 고객
+- fa_int_golf: 골프용품/골프장 결제 고객
+- fa_int_luxury: 100만원 이상 명품 결제 고객
+- fa_int_delivery: 배달 결제 고객
+- fa_int_wedding: 결혼 준비 관련 결제 고객
+
+업종별 지표 (fa_ind_*):
+- fa_ind_beauty: 미용 서비스 결제 고객
+- fa_ind_cosmetic: 뷰티 제품 결제 고객
+- fa_ind_travel: 여행 서비스 결제 고객
+- fa_ind_finance: 금융 서비스 결제 고객
+
+예측 스코어 (sc_*):
+- sc_int_loan1stfinancial: 1금융권 대출 예측스코어 (0-1)
+- sc_ind_cosmetic: 뷰티 제품 예측스코어 (0-1)
+- sc_int_golf: 골프 관련 예측스코어 (0-1)
+- sc_int_highincome: 고소득 예측스코어 (0-1)
+
+플래그 지표 (fi_npay_*):
+- fi_npay_age20/30/40: 20대/30대/40대 여부 (boolean)
+- fi_npay_genderf/m: 여성/남성 여부 (boolean)
+- fi_npay_creditcheck: 신용조회 서비스 가입 (boolean)
+`;
+
+  const prompt = `당신은 CDP(Customer Data Platform) 전문가입니다. 사용자의 자연어 질문을 분석하여 최적의 고객 세그먼테이션 전략을 제공합니다.
+
+${CDP_COLUMNS_INFO}
+
+사용자 질문: "${userQuery}"
+
+위 질문을 분석하여 다음 JSON 형식으로 응답해주세요:
+
+{
+  "query_analysis": "질문의 핵심 요구사항 분석",
+  "target_description": "타겟 고객군 설명", 
+  "recommended_columns": [
+    {
+      "column": "컬럼명",
+      "description": "컬럼 설명",
+      "condition": "추천 조건 (예: > 0.7, IS NOT NULL)",
+      "priority": "high|medium|low",
+      "reasoning": "선택 이유"
+    }
+  ],
+  "sql_query": "실행 가능한 SELECT 쿼리",
+  "business_insights": ["비즈니스 인사이트 배열"],
+  "estimated_target_size": "예상 타겟 규모 (%)",
+  "marketing_recommendations": ["마케팅 추천사항 배열"]
+}
+
+반드시 유효한 JSON 형식으로만 응답해주세요.`;
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${OPENAI_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a CDP expert. Always respond in valid JSON format only.'
+        },
+        {
+          role: 'user', 
+          content: prompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI API Error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  const aiResponse = data.choices[0].message.content;
+
+  try {
+    // JSON 파싱 시도
+    const parsed = JSON.parse(aiResponse);
+    return parsed;
+  } catch (parseError) {
+    console.error('JSON 파싱 실패:', parseError.message);
+    console.error('원본 응답:', aiResponse);
+    throw new Error(`JSON Parse Error: ${parseError.message}`);
+  }
+}
+
 // Parse JSON bodies
 app.use(express.json());
 
@@ -334,19 +439,35 @@ app.post('/api/analyze', async (req, res) => {
   try {
     const { query } = req.body;
     
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ 
-        error: 'OPENAI_API_KEY 환경변수가 설정되지 않았습니다. Railway에서 환경변수를 설정해주세요.' 
-      });
+    // 입력 유효성 검사
+    if (!query || query.trim().length === 0) {
+      return res.status(400).json({ error: '질문을 입력해주세요.' });
+    }
+    
+    let result;
+    
+    // OpenAI API 키가 있으면 실제 AI 분석 시도
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        console.log('OpenAI API 호출 시작:', query);
+        result = await analyzeWithOpenAI(query);
+        console.log('OpenAI API 응답 성공');
+      } catch (apiError) {
+        console.error('OpenAI API 오류:', apiError.message);
+        console.log('Fallback으로 전환');
+        result = generateSmartFallbackResult(query);
+      }
+    } else {
+      console.log('OpenAI API 키 없음 - Fallback 사용');
+      result = generateSmartFallbackResult(query);
     }
 
-    // 질문 키워드 기반 스마트 분석 (OpenAI API 대체)
-    const fallbackResult = generateSmartFallbackResult(query);
-
-    res.json(fallbackResult);
+    res.json(result);
   } catch (error) {
-    console.error('API Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('서버 에러:', error);
+    // 502 에러 방지를 위해 항상 응답 반환
+    const fallbackResult = generateSmartFallbackResult(req.body?.query || '일반 질문');
+    res.status(200).json(fallbackResult);
   }
 });
 
