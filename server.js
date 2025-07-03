@@ -434,10 +434,34 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'working_ai_query_platform.html'));
 });
 
+// Debug endpoint to check environment variables
+app.get('/api/debug', (req, res) => {
+  const hasApiKey = !!process.env.OPENAI_API_KEY;
+  const apiKeyLength = process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0;
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    environment: nodeEnv,
+    hasOpenAIKey: hasApiKey,
+    apiKeyLength: apiKeyLength,
+    apiKeyPrefix: hasApiKey ? process.env.OPENAI_API_KEY.substring(0, 8) + '...' : 'Not Set',
+    serverStatus: 'running'
+  });
+});
+
 // API endpoint for OpenAI calls (보안을 위해 서버에서 처리)
 app.post('/api/analyze', async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const { query } = req.body;
+    
+    console.log(`\n🔍 [${new Date().toISOString()}] 새로운 분석 요청:`, query);
+    console.log(`📋 환경변수 상태:`);
+    console.log(`   - OPENAI_API_KEY 존재: ${!!process.env.OPENAI_API_KEY}`);
+    console.log(`   - API 키 길이: ${process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0}`);
+    console.log(`   - NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
     
     // 입력 유효성 검사
     if (!query || query.trim().length === 0) {
@@ -445,28 +469,50 @@ app.post('/api/analyze', async (req, res) => {
     }
     
     let result;
+    let analysisMethod = 'unknown';
     
     // OpenAI API 키가 있으면 실제 AI 분석 시도
     if (process.env.OPENAI_API_KEY) {
       try {
-        console.log('OpenAI API 호출 시작:', query);
+        console.log('🤖 OpenAI API 호출 시작...');
         result = await analyzeWithOpenAI(query);
-        console.log('OpenAI API 응답 성공');
+        analysisMethod = 'openai';
+        console.log('✅ OpenAI API 응답 성공');
       } catch (apiError) {
-        console.error('OpenAI API 오류:', apiError.message);
-        console.log('Fallback으로 전환');
+        console.error('❌ OpenAI API 오류:', apiError.message);
+        console.error('   상세 에러:', apiError);
+        console.log('🔄 Fallback으로 전환');
         result = generateSmartFallbackResult(query);
+        analysisMethod = 'fallback_after_error';
       }
     } else {
-      console.log('OpenAI API 키 없음 - Fallback 사용');
+      console.log('⚠️  OpenAI API 키 없음 - Fallback 사용');
       result = generateSmartFallbackResult(query);
+      analysisMethod = 'fallback_no_key';
     }
+
+    // 분석 방법 메타데이터 추가
+    result._metadata = {
+      analysisMethod: analysisMethod,
+      processingTimeMs: Date.now() - startTime,
+      timestamp: new Date().toISOString(),
+      query: query
+    };
+
+    console.log(`🎯 분석 완료 (${analysisMethod}) - ${Date.now() - startTime}ms`);
+    console.log(`📤 추천 컬럼 수: ${result.recommended_columns?.length || 0}\n`);
 
     res.json(result);
   } catch (error) {
-    console.error('서버 에러:', error);
+    console.error('💥 서버 에러:', error);
     // 502 에러 방지를 위해 항상 응답 반환
     const fallbackResult = generateSmartFallbackResult(req.body?.query || '일반 질문');
+    fallbackResult._metadata = {
+      analysisMethod: 'error_fallback',
+      processingTimeMs: Date.now() - startTime,
+      timestamp: new Date().toISOString(),
+      error: error.message
+    };
     res.status(200).json(fallbackResult);
   }
 });
